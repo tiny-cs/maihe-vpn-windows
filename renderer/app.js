@@ -172,6 +172,18 @@ function renderStatus() {
   if (vpnState.error) { err.hidden = false; err.textContent = vpnState.error; }
   else err.hidden = true;
 
+  // 系统代理自动设置状态：连上且自动设置成功才显示已自动设置。
+  const pl = $('proxyLine');
+  if (pl) {
+    if (vpnState.state === 'connected' && vpnState.systemProxy === 'on') {
+      pl.textContent = '系统代理已自动设为 127.0.0.1:2080，断开后自动恢复。';
+    } else if (vpnState.state === 'connected' && vpnState.systemProxy === 'failed') {
+      pl.textContent = '系统代理自动设置失败，请点上面按钮手动设为 127.0.0.1:2080。';
+    } else {
+      pl.textContent = '';
+    }
+  }
+
   const cur = nodes.find((n) => n.id === currentNodeId) || vpnState.node;
   $('currentNodeName').textContent = cur ? cur.name : '未选择节点';
   $('currentNodeMeta').textContent = cur ? (cur.type.toUpperCase() + ' · ' + cur.server + ':' + cur.port) : '请先在下方添加你的节点';
