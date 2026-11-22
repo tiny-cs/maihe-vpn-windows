@@ -4,6 +4,29 @@
 'use strict';
 
 const DEFAULT_SERVER = 'cs334-site.pages.dev';
+
+// ---------- 内置节点：用户自己的 3 个 Cloudflare 免费节点 ----------
+// 新用户第一次打开就有节点可用。UUID 写在程序里，任何人解包都能拿到，
+// 所以这 3 个节点的免费额度（每天 10 万次请求，按账号共用）是所有用户一起分的，
+// 人多会先到顶——到时要升级付费或加 VPS 节点。不要宣传成全球多地区或不限量。
+const BUILT_IN_NODES = [
+  { id: 'builtin-1', name: '麦禾节点 1', type: 'vless', server: 'cs334-site.pages.dev', port: 443, uuid: '1f0ee6a2-4a99-45fa-8063-7376341ddacc', password: '', alterId: 0, security: 'tls', network: 'ws', wsPath: '/', wsHost: 'cs334-site.pages.dev', sni: 'cs334-site.pages.dev', flow: '', method: '', createdAt: Date.now() },
+  { id: 'builtin-2', name: '麦禾节点 2', type: 'vless', server: 'cs334-node2.pages.dev', port: 443, uuid: 'ff7d3d16-5abc-4add-96bd-8420af4835b2', password: '', alterId: 0, security: 'tls', network: 'ws', wsPath: '/', wsHost: 'cs334-node2.pages.dev', sni: 'cs334-node2.pages.dev', flow: '', method: '', createdAt: Date.now() },
+  { id: 'builtin-3', name: '麦禾节点 3', type: 'vless', server: 'cs334-node3.pages.dev', port: 443, uuid: '6924b71f-f183-4c59-bc7f-45284c2a72bc', password: '', alterId: 0, security: 'tls', network: 'ws', wsPath: '/', wsHost: 'cs334-node3.pages.dev', sni: 'cs334-node3.pages.dev', flow: '', method: '', createdAt: Date.now() },
+];
+// 一次性播种：只在第一次运行时写进列表；用户手动删掉某个内置节点后不再补回。
+function seedBuiltInNodes() {
+  try {
+    if (localStorage.getItem('builtin_seeded_v1')) return;
+    for (const n of BUILT_IN_NODES) {
+      const idx = nodes.findIndex((x) => x.server === n.server && x.port === n.port && x.uuid === n.uuid);
+      if (idx < 0) nodes.push(Object.assign({}, n));
+    }
+    localStorage.setItem('builtin_seeded_v1', '1');
+    saveNodes();
+  } catch (_) { /* 忽略 */ }
+}
+
 const MB = 1024 * 1024;
 const DAILY_FREE = 500 * MB;
 const MONTHLY_FREE = 10 * 1024 * MB;
@@ -164,7 +187,7 @@ function renderQuota() {
   const used = quota.pro ? 0 : quota.dayUsed;
   $('quotaBar').style.width = quota.pro ? '0%' : Math.min(100, Math.round((used / DAILY_FREE) * 100)) + '%';
   $('quotaLine').textContent = quota.pro
-    ? 'Pro（本地占位）：应用内不限流量 * 后端仍是单节点'
+    ? 'Pro（本地占位）：应用内不限流量 * 后端仍是 3 个免费节点'
     : '今日已用 ' + fmtBytes(quota.dayUsed) + ' / 500 MB · 本月已用 ' + fmtBytes(quota.monthUsed) + ' / 10 GB';
   $('proState').textContent = quota.pro ? '当前：Pro（本地占位，未收费）' : '当前：免费版';
 }
@@ -315,7 +338,7 @@ function bindEvents() {
   });
   $('btnEnableProPlaceholder').addEventListener('click', () => {
     quota = normalizeQuota(quota); quota.pro = true; saveQuota(); renderQuota();
-    window.maihe.showMessage({ message: '已开启本地 Pro 占位（仅测试，不收费）。后端仍是单节点，不要对外收费宣传。' });
+    window.maihe.showMessage({ message: '已开启本地 Pro 占位（仅测试，不收费）。后端仍是 3 个免费节点，不要对外收费宣传。' });
   });
   $('btnDisablePro').addEventListener('click', () => {
     quota = normalizeQuota(quota); quota.pro = false; saveQuota(); renderQuota();
@@ -328,6 +351,7 @@ function bindEvents() {
 // ---------- 启动 ----------
 async function init() {
   try { nodes = (await window.maihe.nodesLoad()) || []; } catch (_) { nodes = []; }
+  seedBuiltInNodes();
   try { quota = normalizeQuota(await window.maihe.quotaLoad()); } catch (_) { quota = normalizeQuota(null); }
   if (nodes.length) currentNodeId = nodes[0].id;
   try { vpnState = await window.maihe.vpnStatus(); } catch (_) { /* 保持默认 */ }
