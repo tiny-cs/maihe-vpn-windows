@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>麦禾 VPN</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div id="app">
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-icon" aria-hidden="true">
+        <svg viewBox="0 0 64 64" width="28" height="28"><path d="M32 3 56 12v18c0 16-10 26-24 31C18 56 8 46 8 30V12L32 3z" fill="#16a34a"/><path d="M32 9 50 15.5V30c0 12.5-7.5 20.5-18 24.5C21.5 50.5 14 42.5 14 30V15.5L32 9z" fill="#052e16"/><path d="M35 14 22 36h8l-3 14 13-22h-8l3-14z" fill="#fff"/></svg>
+      </span>
+      <span class="brand-name">麦禾 VPN</span>
+    </div>
+    <span id="statusPill" class="pill pill-off">未连接</span>
+  </header>
+
+  <div class="notice" id="limitNotice">
+    真实后端只有 1 个 Cloudflare 免费节点（cs334-site，每天 10 万次请求，约 5–10 GB），不是多地区 / 30+ 服务器。Pro 的“不限流量”目前只是本地占位，接上真实 VPS 节点前不要对外收费宣传。
+  </div>
+
+  <main>
+    <!-- 首页：ShieldFlow 模式 -->
+    <section id="view-home" class="view active">
+      <div class="shield-wrap">
+        <button id="shieldBtn" class="shield" title="点一下连接 / 断开" aria-label="连接或断开 VPN">
+          <svg viewBox="0 0 120 120" width="120" height="120" aria-hidden="true">
+            <path d="M60 6 108 22v34c0 30-19 49-48 58C31 105 12 86 12 56V22L60 6z" fill="#16a34a"/>
+            <path d="M60 17 97 29.5V56c0 23.5-14 38.5-37 46.5C37 94.5 23 79.5 23 56V29.5L60 17z" fill="#052e16"/>
+            <path d="M66 27 41 68h15l-6 25 25-41H60l6-25z" fill="#ffffff"/>
+          </svg>
+        </button>
+        <div id="connectLabel" class="connect-label">点盾牌连接</div>
+        <div id="speedLine" class="speed-line">↓ -- / ↑ --</div>
+        <div id="sessionLine" class="session-line">本次流量：0 B · 已连接 00:00</div>
+      </div>
+
+      <div class="card" id="currentNodeCard">
+        <div class="card-title">当前节点</div>
+        <div id="currentNodeName" class="node-name">未选择节点</div>
+        <div id="currentNodeMeta" class="node-meta">请先在下方添加你的节点</div>
+        <div class="row">
+          <button id="btnAutoSelect" class="btn btn-secondary">自动选最快</button>
+          <button id="btnTestCurrent" class="btn btn-secondary">测速</button>
+          <button id="btnCheckIp" class="btn btn-secondary">检测出口 IP</button>
+        </div>
+        <div id="ipLine" class="ip-line">出口 IP：未检测</div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">今日免费流量</div>
+        <div class="progress"><div id="quotaBar" class="progress-bar" style="width:0%"></div></div>
+        <div id="quotaLine" class="quota-line">今日已用 0 MB / 500 MB · 本月已用 0 MB / 10 GB</div>
+        <div class="hint">Windows 版没有 AdMob，不提供“看广告 +1 GB”。额度是本机本地记账，换电脑会重置。</div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">系统代理</div>
+        <div class="hint">本程序默认用系统代理模式：sing-box 在本机 127.0.0.1:2080 提供代理，连接成功后请把 Windows 系统代理指向它，或点下面打开代理设置页手动设置。TUN 模式需要管理员权限，见 README。</div>
+        <div class="row">
+          <button id="btnProxySettings" class="btn btn-secondary">打开 Windows 代理设置</button>
+          <button id="btnPro" class="btn btn-primary">升级 Pro（占位）</button>
+        </div>
+        <div id="errorLine" class="error-line" hidden></div>
+      </div>
+    </section>
+
+    <!-- 节点列表 -->
+    <section id="view-nodes" class="view">
+      <div class="card">
+        <div class="card-title">节点列表</div>
+        <div id="nodeList" class="node-list"><div class="empty">还没有节点。先粘贴你的 VLESS 链接，或导入订阅。</div></div>
+      </div>
+      <div class="card">
+        <div class="card-title">粘贴链接添加</div>
+        <textarea id="linkInput" rows="3" placeholder="粘贴 vless:// / vmess:// / trojan:// / ss:// 链接"></textarea>
+        <button id="btnAddLink" class="btn btn-primary full">解析并添加</button>
+      </div>
+      <div class="card">
+        <div class="card-title">订阅导入</div>
+        <input id="subInput" type="text" placeholder="粘贴订阅地址（https://…），留空则只导入下方文本" />
+        <textarea id="subText" rows="3" placeholder="或直接粘贴订阅内容（base64 / 每行一个链接）"></textarea>
+        <button id="btnImportSub" class="btn btn-primary full">导入订阅</button>
+        <div class="hint">重复导入同一订阅会替换同名旧节点，不会无限叠加。订阅链接本身就是凭证，不要发给别人。</div>
+      </div>
+      <div class="card">
+        <div class="card-title">手动填写</div>
+        <label>名称 <input id="mName" type="text" placeholder="例如：cs334-site" /></label>
+        <label>服务器 <input id="mServer" type="text" value="cs334-site.pages.dev" /></label>
+        <label>端口 <input id="mPort" type="number" value="443" /></label>
+        <label>UUID <input id="mUuid" type="text" placeholder="去 cs334-site 的 /admin 后台复制你的 UUID" /></label>
+        <label>协议
+          <select id="mType">
+            <option value="vless">VLESS</option>
+            <option value="vmess">VMess</option>
+            <option value="trojan">Trojan</option>
+            <option value="ss">Shadowsocks</option>
+          </select>
+        </label>
+        <label>传输 <input id="mPath" type="text" value="/" placeholder="WS 路径，默认 /" /></label>
+        <label>WS Host / SNI <input id="mHost" type="text" value="cs334-site.pages.dev" /></label>
+        <button id="btnAddManual" class="btn btn-primary full">保存节点</button>
+      </div>
+    </section>
+
+    <!-- Pro（占位） -->
+    <section id="view-pro" class="view">
+      <div class="card">
+        <div class="card-title">免费 vs Pro</div>
+        <table class="plan-table">
+          <tr><th></th><th>免费</th><th>Pro（占位）</th></tr>
+          <tr><td>每日流量</td><td>500 MB</td><td>应用内不限 *</td></tr>
+          <tr><td>每月流量</td><td>上限 10 GB</td><td>应用内不限 *</td></tr>
+          <tr><td>设备</td><td>1 台（本机）</td><td>1 台（本机）</td></tr>
+          <tr><td>节点</td><td>仅你自己的节点</td><td>全部节点 *</td></tr>
+          <tr><td>广告</td><td>Windows 版无广告</td><td>无广告</td></tr>
+        </table>
+        <div class="hint">* Pro 目前只是本地占位开关，没有真实价格、没有真实支付。后端仍是 1 个 Cloudflare 免费节点，接上真实 VPS 节点之前，不要用 Pro 向他人收费，也不要宣传多地区、全球节点。</div>
+        <div class="hint">Windows 版没有 AdMob，赚钱以后走 Pro / 网站结账，不在 App 内放广告。商品 ID（待定）：maihe_vpn_pro_windows —— 在确定收款方案后才填写。</div>
+        <button id="btnEnableProPlaceholder" class="btn btn-secondary full">开启本地 Pro 占位（仅测试，不收费）</button>
+        <button id="btnDisablePro" class="btn btn-secondary full">关闭 Pro 占位</button>
+        <div id="proState" class="pro-state">当前：免费版</div>
+      </div>
+    </section>
+
+    <!-- 关于 / 隐私 -->
+    <section id="view-about" class="view">
+      <div class="card">
+        <div class="card-title">关于与隐私</div>
+        <ol class="about-list">
+          <li>本程序不内置任何 UUID 或订阅地址。第一次打开是空列表，你需要自己粘贴 VLESS 链接、导入订阅，或手动填 UUID。</li>
+          <li>真实后端只有 1 个 Cloudflare 免费节点（cs334-site.pages.dev），每天 10 万次请求，约 5–10 GB。不是多地区服务器群，没有 30+ 服务器。</li>
+          <li>连接状态只认 sing-box 子进程的真实状态。sing-box 缺失或启动失败时，会明确报错，绝不显示“已连接”。</li>
+          <li>出口 IP 检测是真验证：连接前后各查一次，IP 变了才说明流量走了节点。</li>
+          <li>免费额度（每日 500 MB、每月 10 GB）是本机本地记账，没有账号、没有服务端，换电脑 / 清数据后会重置。</li>
+          <li>Pro 是本地占位，未开通真实收款。接上真实 VPS 节点前，不要对外收费宣传。</li>
+          <li>本程序不收集、不上传你的浏览记录。节点和 UUID 只保存在本机。</li>
+        </ol>
+        <div class="hint">版本 0.1.0 · Electron + sing-box · Windows 11</div>
+      </div>
+    </section>
+  </main>
+
+  <nav class="tabbar">
+    <button class="tab active" data-view="view-home">首页</button>
+    <button class="tab" data-view="view-nodes">节点</button>
+    <button class="tab" data-view="view-pro">Pro</button>
+    <button class="tab" data-view="view-about">关于</button>
+  </nav>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
