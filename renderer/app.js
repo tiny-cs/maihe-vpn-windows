@@ -193,8 +193,10 @@ function renderStatus() {
   }
 
   const cur = nodes.find((n) => n.id === currentNodeId) || vpnState.node;
+  // vpnState.node 是主进程发来的简版对象，没有延迟；用节点列表里的完整对象取延迟。
+  const curFull = (cur && cur.id) ? (nodes.find((n) => n.id === cur.id) || cur) : cur;
   $('currentNodeName').textContent = cur ? cur.name : '未选择节点';
-  $('currentNodeMeta').textContent = cur ? (cur.type.toUpperCase() + ' · ' + cur.server + ':' + cur.port) : '请先在下方添加你的节点';
+  $('currentNodeMeta').textContent = cur ? (cur.type.toUpperCase() + ' · ' + cur.server + ':' + cur.port + (curFull.latencyMs ? ' · ' + curFull.latencyMs + ' ms' : '')) : '请先在下方添加你的节点';
   const sp = vpnState.speed || { upBps: 0, downBps: 0 };
   const sb = vpnState.sessionBytes || { up: 0, down: 0 };
   $('speedLine').textContent = vpnState.state === 'connected'
@@ -243,6 +245,10 @@ async function saveNodes() { try { await window.maihe.nodesSave(nodes); } catch 
 async function testLatency(id) {
   const n = nodes.find((x) => x.id === id);
   if (!n) return;
+  // 测速时给个反馈：按钮变“测速中…”并禁用，测完在首页当前节点和节点列表都显示 ms。
+  // 原来没有反馈、结果只刷节点列表，首页上什么都不变，看起来像点了没反应。
+  const btn = $('btnTestCurrent');
+  if (btn) { btn.disabled = true; btn.textContent = '测速中…'; }
   const t0 = performance.now();
   try {
     // TCP 直连测的是“能不能连上服务器端口”，不是代理延迟；真正的代理延迟
@@ -250,7 +256,8 @@ async function testLatency(id) {
     await fetch('https://' + n.server + '/', { mode: 'no-cors', signal: AbortSignal.timeout(5000) }).catch(() => {});
     n.latencyMs = Math.round(performance.now() - t0);
   } catch (_) { n.latencyMs = null; }
-  renderNodes();
+  finally { if (btn) { btn.disabled = false; btn.textContent = '测速'; } }
+  renderAll();
 }
 async function autoSelect() {
   if (!nodes.length) { await window.maihe.showMessage({ message: '还没有节点，请先添加节点。' }); return; }
@@ -309,7 +316,13 @@ function bindEvents() {
   });
   $('shieldBtn').addEventListener('click', toggleConnect);
   $('btnAutoSelect').addEventListener('click', autoSelect);
-  $('btnTestCurrent').addEventListener('click', () => { if (currentNodeId) testLatency(currentNodeId); });
+  // 首页“测速”：原来只在 currentNodeId 有值时才测，但点盾连接并不设置 currentNodeId，
+  // 所以没点过“设为当前”就点了没反应。改成按“已选 → 已连接 → 第一个节点”兜底。
+  $('btnTestCurrent').addEventListener('click', () => {
+    const target = nodes.find((n) => n.id === currentNodeId) ||
+      (vpnState.node && nodes.find((n) => n.id === vpnState.node.id)) || nodes[0];
+    if (target) { currentNodeId = target.id; testLatency(target.id); }
+  });
   $('btnCheckIp').addEventListener('click', checkIp);
   $('btnProxySettings').addEventListener('click', () => window.maihe.openExternal('ms-settings:network-proxy'));
   $('btnPro').addEventListener('click', () => {
