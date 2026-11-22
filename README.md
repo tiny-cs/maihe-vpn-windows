@@ -4,7 +4,7 @@
 
 > ⚠️ 重要限制（先读这段，再谈赚钱）：
 >
-> 真实后端目前只有 **1 个 Cloudflare 免费节点**（`cs334-site.pages.dev`，VLESS + WebSocket + TLS，端口 443；免费版每天 10 万次请求，约 5–10 GB）。
+> 真实后端目前只有 **3 个 Cloudflare 免费节点**（`cs334-site` / `cs334-node2` / `cs334-node3`，都是 `*.pages.dev`，VLESS + WebSocket + TLS，端口 443；免费版每天 10 万次请求按账号共用，约 5–10 GB）。
 > 这不是多地区服务器群，没有 30+ 服务器、没有全球节点。
 > 因此：
 > - 本程序不能向他人承诺“多地区 / 无限付费服务”；
@@ -28,23 +28,21 @@
 
 | | 免费版 | Pro（本地占位） |
 |---|---|---|
-| 每日流量 | 500 MB | 应用内不限（占位，后端仍是单节点） |
+| 每日流量 | 500 MB | 应用内不限（占位，后端仍是 3 个免费节点） |
 | 每月流量 | 上限 10 GB | 应用内不限（占位） |
 | 设备 | 1 台（本机安装，无账号、无服务端校验） | 同上 |
-| 节点 | 仅你自己的 cs334-site 节点 | 全部节点（目前也只有 cs334-site） |
+| 节点 | 内置 3 个麦禾节点（Cloudflare 免费节点） | 全部节点（目前只有 3 个内置麦禾节点） |
 | 广告 | Windows 版无广告 | 无广告 |
 
 Windows 版**没有 AdMob**：AdMob 是移动广告 SDK，不适用于 Windows 桌面。Windows 的赚钱以后走 Pro / 网站结账（例如在网站上卖 Pro 兑换码，或接 Stripe / PayPal），不在 App 内放广告。商品 ID（待定）：`maihe_vpn_pro_windows` —— 在确定收款方案后才填写，代码里没有任何真实价格。
 
 额度代码位置：`src/quota.js`（每日 500 MB、每月 10 GB）、`main.js`（连接前检查额度、断开时结算）。
 
-## 节点：只接你自己的 cs334-site 节点
+## 节点：内置 3 个麦禾节点
 
-- 手动填写时服务器地址已预填 `cs334-site.pages.dev`，端口 443，VLESS + WebSocket + TLS。
-- **本工程不内置、不编造任何 UUID 或订阅地址。** 第一次打开是空列表，需要你自己：
-  1. 粘贴 `vless://…` 链接，或
-  2. 导入订阅地址，或
-  3. 手动填写：去 cs334-site 的 `/admin` 后台复制你的 UUID 粘贴进来。
+- 第一次打开已有 3 个内置麦禾节点（`cs334-site` / `cs334-node2` / `cs334-node3`，VLESS + WebSocket + TLS，端口 443），直接点盾牌就能连。
+- 也可以自己加节点：粘贴 `vless://…` 链接、导入订阅，或手动填写（服务器地址已预填 `cs334-site.pages.dev`，去 cs334-site 的 `/admin` 后台复制你的 UUID 粘贴进来）。
+- 内置节点的 UUID 写在程序里，任何人解包都能拿到，所以 3 个节点的免费额度是所有用户一起分的。
 - 支持解析 `vless://`、`vmess://`、`trojan://`、`ss://`（`src/nodeParser.js`，渲染层 `renderer/app.js` 里有同一规则的小实现）。
 - sing-box 配置由 `src/singboxConfig.js` 生成（mixed 入站 127.0.0.1:2080 + 当前节点出站 + DNS 防泄漏 + 本机 Clash API）。
 
@@ -91,7 +89,7 @@ npm start
 
 - `npm install` 会下载 Electron、electron-builder（首次较慢，需要联网）；
 - `npm start` 会打开 420×760 的桌面窗口；
-- 首次打开是空节点列表：粘贴你的 VLESS 链接，或去 cs334-site `/admin` 复制 UUID 手动添加；
+- 首次打开已有 3 个内置麦禾节点，直接点盾牌连接；也可以粘贴自己的 VLESS 链接，或去 cs334-site `/admin` 复制 UUID 手动添加；
 - 点盾牌连接 → 系统代理按上面“工作原理”第 4 步设置 → 点“检测出口 IP”，IP 变了才说明通了。
 
 ### 4. 检查语法（可选）
@@ -145,7 +143,7 @@ npm run dist
 
 ## 还需要你提供的
 
-1. 自己的 VLESS 链接或 UUID（去 cs334-site `/admin` 后台复制，粘贴进 App）；
+1. （已内置 3 个节点，不用再提供；如需加自己的节点，可去 cs334-site `/admin` 后台复制链接粘贴进 App）；
 2. sing-box Windows 版二进制（官方发布页下载，放到 `bin/`）；
 3. 一台 Windows 11 电脑（装 Node.js、跑 `npm install`、`npm start`、打包 `.exe`）；
 4. （以后）真实 VPS 节点——接好之前不要对外收 Pro 的钱、不要宣传多地区；
