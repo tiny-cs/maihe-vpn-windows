@@ -1,0 +1,62 @@
+name: Build Windows installer
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Generate icon.ico from icon.svg
+        shell: pwsh
+        run: |
+          pip install pillow
+          python scripts/make_icon.py
+
+      - name: Download sing-box (official release)
+        shell: pwsh
+        run: |
+          $rel = Invoke-RestMethod -Uri "https://api.github.com/repos/SagerNet/sing-box/releases/latest" -Headers @{ "User-Agent" = "maihe-vpn-build" }
+          $asset = $rel.assets | Where-Object { $_.name -like "sing-box-*-windows-amd64.zip" } | Select-Object -First 1
+          if (-not $asset) { throw "sing-box windows-amd64 asset not found in latest release" }
+          Write-Host "Downloading $($asset.name)"
+          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile sing-box.zip
+          Expand-Archive sing-box.zip -DestinationPath sing-box-tmp
+          $exe = Get-ChildItem -Recurse -Filter sing-box.exe sing-box-tmp | Select-Object -First 1
+          if (-not $exe) { throw "sing-box.exe not found in archive" }
+          New-Item -ItemType Directory -Force -Path bin | Out-Null
+          Copy-Item $exe.FullName -Destination bin\sing-box.exe
+          .\bin\sing-box.exe version
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build installer
+        run: npm run dist
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: maihe-vpn-windows-installer
+          path: dist/*.exe
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v0.1.0-build-${{ github.run_number }}
+          name: 麦禾 VPN Windows v0.1.0 (build ${{ github.run_number }})
+          files: dist/*.exe
+          fail_on_unmatched_files: true
