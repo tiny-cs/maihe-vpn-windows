@@ -62,8 +62,16 @@ function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => (
 
 // ---------- 节点解析（与 src/nodeParser.js 同规则） ----------
 function b64urlDecode(s) {
-  try { let t = String(s || '').replace(/-/g, '+').replace(/_/g, '/'); while (t.length % 4) t += '='; return atob(t); }
-  catch (_) { return ''; }
+  // 注意：atob() 返回的是每个字符一个字节的 Latin-1 串，直接 JSON.parse 会把
+  // UTF-8 中文名（如“日本-优化”）解成 æ¥æ¬ 这种乱码。必须先转成字节再按 UTF-8 解码。
+  try {
+    let t = String(s || '').replace(/-/g, '+').replace(/_/g, '/');
+    while (t.length % 4) t += '=';
+    const bin = atob(t);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new TextDecoder('utf-8').decode(bytes);
+  } catch (_) { return ''; }
 }
 function parseQuery(qs) {
   const out = {};
