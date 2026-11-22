@@ -7,8 +7,101 @@
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const { spawn } = require('child_process');
+const { spawn, execFile } = require('child_process');
 const { buildSingBoxConfig } = require('./src/singboxConfig');
+
+// ---- 自动设置 Windows 系统代理 ----
+// 点盾连接成功后，自动把系统代理设为 127.0.0.1:2080（sing-box 的 mixed 入站），
+// 断开 / sing-box 崩溃 / 程序退出时自动恢复成连接前的设置。
+// 只改当前用户的注册表 HKCU\...\Internet Settings，不动系统级代理，不需要管理员权限。
+// 改完后用 WinINet 的 InternetSetOption 通知系统立即生效（只对新连接生效，
+// 已打开的网页可能要刷新一次）。任何一步失败都不影响 VPN 本身连接，
+// 只在界面上报告“系统代理自动设置失败”，用户仍可手动设置。
+const PROXY_HOST = '127.0.0.1';
+const PROXY_PORT = 2080;
+const PROXY_REG_KEY = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings';
+let savedProxy = null;      // 连接前用户的代理设置 { enabled, server, override }
+let proxyManaged = false;   // 本次连接是否由我们改过系统代理
+let systemProxyState = 'off'; // off | on | failed（供界面显示）
+
+function execFileAsync(file, args) {
+  return new Promise((resolve, reject) => {
+    execFile(file, args, { windowsHide: true, timeout: 10000 }, (err, stdout, stderr) => {
+      if (err) reject(new Error((stderr && stderr.toString()) || err.message));
+      else resolve((stdout || '').toString());
+    });
+  });
+}
+async function readProxySettings() {
+  try {
+    const out = await execFileAsync('reg', ['query', PROXY_REG_KEY, '/v', 'ProxyEnable']);
+    const m = out.match(/ProxyEnable\s+REG_DWORD\s+0x([0-9a-fA-F]+)/);
+    let server = null, override = null;
+    try {
+      const o2 = await execFileAsync('reg', ['query', PROXY_REG_KEY, '/v', 'ProxyServer']);
+      const m2 = o2.match(/ProxyServer\s+REG_SZ\s+(.+)/);
+      if (m2) server = m2[1].trim();
+    } catch (_) { /* 没有 ProxyServer 就是没设过 */ }
+    try {
+      const o3 = await execFileAsync('reg', ['query', PROXY_REG_KEY, '/v', 'ProxyOverride']);
+      const m3 = o3.match(/ProxyOverride\s+REG_SZ\s+(.+)/);
+      if (m3) override = m3[1].trim();
+    } catch (_) { /* 没有 ProxyOverride 就是没设过 */ }
+    return { enabled: m ? parseInt(m[1], 16) === 1 : false, server, override };
+  } catch (_) {
+    return { enabled: false, server: null, override: null };
+  }
+}
+async function refreshProxySettings() {
+  // 通知 Windows 代理设置已变（InternetSetOption 39=SETTINGS_CHANGED, 37=REFRESH）。
+  // 失败也忽略：注册表已改，新开的连接一般仍会生效。
+  const ps = "$s='[DllImport(\"wininet.dll\")] public static extern bool InternetSetOption(IntPtr h, int o, IntPtr b, int l);';" +
+    " $t=Add-Type -MemberDefinition $s -Name WinINet -Namespace PInvoke -PassThru;" +
+    " $t::InternetSetOption([IntPtr]::Zero,39,[IntPtr]::Zero,0)|Out-Null;" +
+    " $t::InternetSetOption([IntPtr]::Zero,37,[IntPtr]::Zero,0)|Out-Null;";
+  try { await execFileAsync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps]); } catch (_) { /* 忽略 */ }
+}
+async function applySystemProxy() {
+  if (proxyManaged) return true;
+  try {
+    savedProxy = await readProxySettings();
+    // 如果用户本来就已经指到 127.0.0.1:2080，就不用动。
+    if (savedProxy.enabled && savedProxy.server === PROXY_HOST + ':' + PROXY_PORT) {
+      proxyManaged = true; systemProxyState = 'on'; return true;
+    }
+    await execFileAsync('reg', ['add', PROXY_REG_KEY, '/v', 'ProxyEnable', '/t', 'REG_DWORD', '/d', '1', '/f']);
+    await execFileAsync('reg', ['add', PROXY_REG_KEY, '/v', 'ProxyServer', '/t', 'REG_SZ', '/d', PROXY_HOST + ':' + PROXY_PORT, '/f']);
+    // <local> 让本机地址（127.0.0.1）不走代理，否则 sing-box 的本机 API 会被自己绕进去。
+    await execFileAsync('reg', ['add', PROXY_REG_KEY, '/v', 'ProxyOverride', '/t', 'REG_SZ', '/d', '<local>', '/f']);
+    await refreshProxySettings();
+    proxyManaged = true; systemProxyState = 'on'; return true;
+  } catch (e) {
+    console.error('自动设置系统代理失败', e);
+    systemProxyState = 'failed'; return false;
+  }
+}
+async function restoreSystemProxy() {
+  if (!proxyManaged) return;
+  proxyManaged = false;
+  try {
+    if (savedProxy && savedProxy.enabled) {
+      await execFileAsync('reg', ['add', PROXY_REG_KEY, '/v', 'ProxyEnable', '/t', 'REG_DWORD', '/d', '1', '/f']);
+      if (savedProxy.server) await execFileAsync('reg', ['add', PROXY_REG_KEY, '/v', 'ProxyServer', '/t', 'REG_SZ', '/d', savedProxy.server, '/f']);
+      if (savedProxy.override) await execFileAsync('reg', ['add', PROXY_REG_KEY, '/v', 'ProxyOverride', '/t', 'REG_SZ', '/d', savedProxy.override, '/f']);
+      else await execFileAsync('reg', ['delete', PROXY_REG_KEY, '/v', 'ProxyOverride', '/f']);
+    } else {
+      // 用户原来没开代理：只关开关，不删他原来的 ProxyServer 值。
+      await execFileAsync('reg', ['add', PROXY_REG_KEY, '/v', 'ProxyEnable', '/t', 'REG_DWORD', '/d', '0', '/f']);
+      if (savedProxy && savedProxy.override) await execFileAsync('reg', ['add', PROXY_REG_KEY, '/v', 'ProxyOverride', '/t', 'REG_SZ', '/d', savedProxy.override, '/f']);
+      else await execFileAsync('reg', ['delete', PROXY_REG_KEY, '/v', 'ProxyOverride', '/f']);
+    }
+    await refreshProxySettings();
+  } catch (e) {
+    console.error('恢复系统代理失败', e);
+  } finally {
+    savedProxy = null; systemProxyState = 'off';
+  }
+}
 
 const APP_NAME = '麦禾 VPN';
 const CONFIG_FILE = 'sing-box-config.json';
@@ -125,12 +218,15 @@ function sendState() {
       speed: lastSpeed,
       connectedMs: connectStartedAt ? Date.now() - connectStartedAt : 0,
       singboxPath: findSingBox(),
+      systemProxy: systemProxyState,
     });
   }
 }
 
 function stopSingBox() {
   stopTrafficPolling();
+  // 断开就把系统代理恢复成连接前的样子（失败也不阻塞断开）。
+  restoreSystemProxy().catch(() => {});
   if (singboxProc) {
     try { singboxProc.kill(); } catch (_) { /* 已退出 */ }
     singboxProc = null;
@@ -238,6 +334,8 @@ async function startVpn(node) {
         (stderrBuf ? '：' + stderrBuf.slice(-500) : '。请查看配置或重新下载 sing-box。');
       singboxProc = null;
       currentNode = null;
+      // sing-box 崩溃也要把系统代理恢复，否则用户上不了网。
+      restoreSystemProxy().catch(() => {});
       sendState();
     }
     singboxProc = null;
@@ -248,6 +346,9 @@ async function startVpn(node) {
   await new Promise((r) => setTimeout(r, 1500));
   if (singboxProc && !singboxProc.killed && currentState === 'connecting') {
     currentState = 'connected';
+    // sing-box 跑起来之后，自动把系统代理设到 127.0.0.1:2080。
+    // 自动设置失败不算连接失败（VPN 本身已通），只在界面上提示手动设置。
+    await applySystemProxy();
     startTrafficPolling();
     sendState();
     return { ok: true, state: 'connected' };
@@ -303,6 +404,7 @@ ipcMain.handle('vpn-status', () => ({
   sessionBytes, speed: lastSpeed,
   connectedMs: connectStartedAt ? Date.now() - connectStartedAt : 0,
   singboxPath: findSingBox(),
+  systemProxy: systemProxyState,
 }));
 ipcMain.handle('vpn-connect', (_e, node) => startVpn(node));
 ipcMain.handle('vpn-disconnect', () => {
