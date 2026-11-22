@@ -1,0 +1,5 @@
+# 麦禾 VPN — Windows 版
+
+node_modules/
+dist/
+*.log
