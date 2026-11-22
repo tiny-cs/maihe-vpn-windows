@@ -68,11 +68,20 @@ function buildSingBoxConfig(node, opts) {
   return {
     log: { level: 'info', timestamp: true },
     dns: {
+      // sing-box 1.14 已删除旧版 address 格式的 DNS 服务器：
+      // https://1.1.1.1/dns-query -> { type: 'https', server: '1.1.1.1' }
+      // 223.5.5.5 -> { type: 'udp', server: '223.5.5.5' }
+      // 旧格式在 1.12 弃用、1.14 移除，会导致 sing-box check 报
+      // "legacy DNS server formats are deprecated … removed in sing-box 1.14.0" 而连接失败。
       servers: [
-        { tag: 'dns-remote', address: 'https://1.1.1.1/dns-query', detour: 'proxy' },
-        { tag: 'dns-direct', address: '223.5.5.5', detour: 'direct' },
+        { tag: 'dns-remote', type: 'https', server: '1.1.1.1', server_port: 443, path: '/dns-query', detour: 'proxy' },
+        { tag: 'dns-direct', type: 'udp', server: '223.5.5.5', server_port: 53, detour: 'direct' },
       ],
-      rules: [{ outbound: 'any', server: 'dns-direct', disable_cache: true }],
+      // 注意：DNS 规则里的 outbound 匹配项已在 1.12 弃用、1.14 移除，
+      // 不能再写 { outbound: 'any', server: ... }，否则 check 会报
+      // "outbound DNS rule item is deprecated …" 而拒绝启动。
+      // 改为按域名后缀分流：国内域名走直连 DNS，其余走代理 DoH。
+      rules: [{ action: 'route', domain_suffix: ['.cn', '.qq.com', '.weixin.qq.com', '.baidu.com', '.aliyun.com'], server: 'dns-direct' }],
       final: 'dns-remote',
     },
     inbounds: inbound,
@@ -80,11 +89,14 @@ function buildSingBoxConfig(node, opts) {
       outboundForNode(node),
       { type: 'direct', tag: 'direct' },
       { type: 'block', tag: 'block' },
-      { type: 'dns', tag: 'dns-out' },
+      // 注意：dns 出站已在 sing-box 1.11 弃用、1.13 删除，
+      // 不能再写 { type: 'dns', tag: 'dns-out' }，否则 check 会报
+      // "dns outbound is deprecated … removed in sing-box 1.13.0"。
+      // DNS 拦截改用下面 route 规则的 hijack-dns 动作。
     ],
     route: {
       rules: [
-        { protocol: 'dns', outbound: 'dns-out' },
+        { protocol: 'dns', action: 'hijack-dns' },
         { ip_is_private: true, outbound: 'direct' },
         // 国内直连：只列最常见的国内域名后缀示例，用户可自行在
         // renderer 里改分流规则；默认其余流量全部走 proxy。
@@ -92,6 +104,10 @@ function buildSingBoxConfig(node, opts) {
       ],
       final: 'proxy',
       auto_detect_interface: true,
+      // sing-box 1.14 要求必须指定默认域名解析器，否则 check 报
+      // "missing route.default_domain_resolver or domain_resolver in dial fields"。
+      // 用直连 DNS 解析节点域名，避免用走代理的 DoH 解析节点域名造成循环依赖。
+      default_domain_resolver: 'dns-direct',
     },
     experimental: {
       cache_file: { enabled: true },
