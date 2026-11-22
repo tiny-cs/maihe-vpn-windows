@@ -59,7 +59,8 @@
 
       <div class="card">
         <div class="card-title">系统代理</div>
-        <div class="hint">本程序默认用系统代理模式：sing-box 在本机 127.0.0.1:2080 提供代理，连接成功后请把 Windows 系统代理指向它，或点下面打开代理设置页手动设置。TUN 模式需要管理员权限，见 README。</div>
+        <div class="hint">本程序默认用系统代理模式：点盾连接成功后自动把 Windows 系统代理设为 127.0.0.1:2080，断开时自动恢复成你原来的设置。下面按钮是手动备用。TUN 模式需要管理员权限，见 README。</div>
+        <div id="proxyLine" class="hint"></div>
         <div class="row">
           <button id="btnProxySettings" class="btn btn-secondary">打开 Windows 代理设置</button>
           <button id="btnPro" class="btn btn-primary">升级 Pro（占位）</button>
