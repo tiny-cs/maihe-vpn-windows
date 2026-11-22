@@ -75,7 +75,10 @@ function buildSingBoxConfig(node, opts) {
       // "legacy DNS server formats are deprecated … removed in sing-box 1.14.0" 而连接失败。
       servers: [
         { tag: 'dns-remote', type: 'https', server: '1.1.1.1', server_port: 443, path: '/dns-query', detour: 'proxy' },
-        { tag: 'dns-direct', type: 'udp', server: '223.5.5.5', server_port: 53, detour: 'direct' },
+        // 注意：dns-direct 不能写 detour: 'direct'。sing-box 1.14 启动时会报
+        // "detour to an empty direct outbound makes no sense" 而进程退出。
+        // 直连 DNS 本来就不需要 detour，去掉即可；走代理的 DoH 才需要 detour: 'proxy'。
+        { tag: 'dns-direct', type: 'udp', server: '223.5.5.5', server_port: 53 },
       ],
       // 注意：DNS 规则里的 outbound 匹配项已在 1.12 弃用、1.14 移除，
       // 不能再写 { outbound: 'any', server: ... }，否则 check 会报
