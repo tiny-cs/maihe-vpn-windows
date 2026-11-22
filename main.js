@@ -4,7 +4,7 @@
 // sing-box 二进制缺失 / 启动失败时，明确报错，绝不显示“已连接”。
 'use strict';
 
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Tray, Menu, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { spawn, execFile } = require('child_process');
@@ -208,7 +208,63 @@ function stopTrafficPolling() {
   lastSpeed = { upBps: 0, downBps: 0 };
 }
 
+// ---- 托盘：点 X 不退出，只藏到右下角托盘，VPN 继续连着 ----
+// 右键托盘图标：显示窗口 / 连接-断开 / 退出。真正退出只走托盘“退出”
+// 或任务管理器结束进程；退出时断开 VPN 并恢复系统代理。
+let tray = null;
+let quitting = false;
+let lastTrayState = '';
+let lastConnectedNode = null;
+
+function trayIcon() {
+  const candidates = [
+    path.join(__dirname, 'assets', 'icon.ico'),
+    path.join(process.resourcesPath || '', 'assets', 'icon.ico'),
+  ];
+  for (const c of candidates) {
+    try { if (fs.existsSync(c)) return nativeImage.createFromPath(c); } catch (_) { /* 继续找 */ }
+  }
+  // 找不到图标文件时用一个绿色小方块兜底，托盘不能没有图标。
+  return nativeImage.createFromDataURL('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAOklEQVR42mP8z8DwnwEKmBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgQEAAP//AwD5/QoKz7o3NQAAAABJRU5ErkJggg==');
+}
+function updateTrayMenu() {
+  if (!tray) return;
+  const stateLabel = { disconnected: '未连接', connecting: '连接中…', connected: '已连接', failed: '连接失败' }[currentState] || currentState;
+  if (stateLabel === lastTrayState) return;
+  lastTrayState = stateLabel;
+  try { tray.setToolTip('麦禾 VPN · ' + stateLabel); } catch (_) { /* 忽略 */ }
+  const connected = currentState === 'connected' || currentState === 'connecting';
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: '显示窗口', click: () => { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } } },
+    { label: connected ? '断开连接' : '连接', click: () => {
+      if (connected) { stopSingBox(); return; }
+      const node = lastConnectedNode || (readJsonFile(userDataFile(NODES_FILE), [])[0] || null);
+      if (node) startVpn(node);
+      else if (mainWindow) { mainWindow.show(); mainWindow.focus(); }
+    } },
+    { type: 'separator' },
+    { label: '退出', click: () => { quitting = true; app.quit(); } },
+  ]));
+}
+function createTray() {
+  if (tray) return;
+  try {
+    tray = new Tray(trayIcon());
+    tray.setToolTip('麦禾 VPN');
+    tray.on('click', () => {
+      if (!mainWindow) return;
+      if (mainWindow.isVisible()) mainWindow.hide();
+      else { mainWindow.show(); mainWindow.focus(); }
+    });
+    updateTrayMenu();
+  } catch (e) {
+    console.error('创建托盘失败', e);
+    tray = null;
+  }
+}
+
 function sendState() {
+  updateTrayMenu();
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('vpn-state', {
       state: currentState,
@@ -268,6 +324,7 @@ async function startVpn(node) {
 
   currentState = 'connecting';
   currentNode = node;
+  lastConnectedNode = node;
   lastError = '';
   sessionBytes = { up: 0, down: 0 };
   connectStartedAt = Date.now();
@@ -378,6 +435,11 @@ function createWindow() {
     },
   });
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  createTray();
+  // 点 X 不退出：藏到托盘，VPN 继续连着。真正退出走托盘右键“退出”。
+  mainWindow.on('close', (e) => {
+    if (!quitting) { e.preventDefault(); mainWindow.hide(); }
+  });
   mainWindow.on('closed', () => { mainWindow = null; });
 }
 
@@ -388,8 +450,10 @@ app.whenReady().then(() => {
   });
 });
 
-app.on('before-quit', () => { stopSingBox(); });
+app.on('before-quit', () => { quitting = true; stopSingBox(); });
 app.on('window-all-closed', () => {
+  // 有托盘时窗口只是隐藏，不会触发这里；只有真正退出时才到这里。
+  if (!quitting) return;
   stopSingBox();
   if (process.platform !== 'darwin') app.quit();
 });
