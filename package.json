@@ -1,1 +1,63 @@
-{"author":"麦禾","build":{"appId":"com.maihe.vpn.windows","copyright":"Copyright © 麦禾","directories":{"output":"dist"},"extraResources":[{"filter":["**/*"],"from":"bin","to":"bin"}],"files":["main.js","preload.js","package.json","renderer/**/*","src/**/*","assets/**/*","bin/**/*"],"nsis":{"allowToChangeInstallationDirectory":true,"createDesktopShortcut":true,"createStartMenuShortcut":true,"oneClick":false,"shortcutName":"麦禾 VPN"},"productName":"麦禾 VPN","win":{"icon":"assets/icon.ico","requestedExecutionLevel":"asInvoker","target":[{"arch":["x64"],"target":"nsis"}]}},"description":"麦禾 VPN — Windows 11 桌面版，接用户自己的 Cloudflare 节点（cs334-site），Electron + sing-box 核心","devDependencies":{"electron":"^33.0.0","electron-builder":"^25.1.8"},"license":"MIT","main":"main.js","name":"maihe-vpn-windows","scripts":{"check":"node --check main.js && node --check preload.js && node --check src/nodeParser.js && node --check src/singboxConfig.js && node --check src/quota.js && node --check renderer/app.js && echo OK","dist":"electron-builder --publish never","dist:dir":"electron-builder --dir","start":"electron ."},"version":"0.1.0"}
+{
+  "author": "麦禾",
+  "build": {
+    "appId": "com.maihe.vpn.windows",
+    "copyright": "Copyright © 麦禾",
+    "directories": {
+      "output": "dist"
+    },
+    "extraResources": [
+      {
+        "filter": [
+          "**/*"
+        ],
+        "from": "bin",
+        "to": "bin"
+      }
+    ],
+    "files": [
+      "main.js",
+      "preload.js",
+      "package.json",
+      "renderer/**/*",
+      "src/**/*",
+      "assets/**/*",
+      "bin/**/*"
+    ],
+    "nsis": {
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "oneClick": false,
+      "shortcutName": "麦禾 VPN"
+    },
+    "productName": "麦禾 VPN",
+    "win": {
+      "icon": "assets/icon.ico",
+      "requestedExecutionLevel": "asInvoker",
+      "target": [
+        {
+          "arch": [
+            "x64"
+          ],
+          "target": "nsis"
+        }
+      ]
+    }
+  },
+  "description": "麦禾 VPN — Windows 11 桌面版，接用户自己的 Cloudflare 节点（cs334-site），Electron + sing-box 核心",
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "license": "MIT",
+  "main": "main.js",
+  "name": "maihe-vpn-windows",
+  "scripts": {
+    "check": "node --check main.js && node --check preload.js && node --check src/nodeParser.js && node --check src/singboxConfig.js && node --check src/quota.js && node --check renderer/app.js && echo OK",
+    "dist": "electron-builder --publish never",
+    "dist:dir": "electron-builder --dir",
+    "start": "electron ."
+  },
+  "version": "0.1.0"
+}
