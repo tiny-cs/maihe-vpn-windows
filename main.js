@@ -312,7 +312,9 @@ ipcMain.handle('vpn-disconnect', () => {
   return { ok: true, sessionBytes: bytes, connectedMs: connectStartedAt ? Date.now() - connectStartedAt : 0 };
 });
 ipcMain.handle('open-external', (_e, url) => {
-  if (typeof url === 'string' && /^https:\/\//.test(url)) return shell.openExternal(url);
+  // 注意：原来只放行 https://，ms-settings:network-proxy 被悄悄拦掉，
+  // 所以首页“打开 Windows 代理设置”按钮点了没反应。只放行这一个系统设置页。
+  if (typeof url === 'string' && (/^https:\/\//.test(url) || url === 'ms-settings:network-proxy')) return shell.openExternal(url);
   return Promise.resolve(false);
 });
 ipcMain.handle('show-message', (_e, opts) => dialog.showMessageBox(mainWindow, {
