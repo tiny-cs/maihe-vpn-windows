@@ -115,10 +115,10 @@
           <tr><td>每日流量</td><td>500 MB</td><td>应用内不限 *</td></tr>
           <tr><td>每月流量</td><td>上限 10 GB</td><td>应用内不限 *</td></tr>
           <tr><td>设备</td><td>1 台（本机）</td><td>1 台（本机）</td></tr>
-          <tr><td>节点</td><td>仅你自己的节点</td><td>全部节点 *</td></tr>
+          <tr><td>节点</td><td>内置 3 个麦禾节点</td><td>全部节点 *</td></tr>
           <tr><td>广告</td><td>Windows 版无广告</td><td>无广告</td></tr>
         </table>
-        <div class="hint">* Pro 目前只是本地占位开关，没有真实价格、没有真实支付。后端仍是 1 个 Cloudflare 免费节点，接上真实 VPS 节点之前，不要用 Pro 向他人收费，也不要宣传多地区、全球节点。</div>
+        <div class="hint">* Pro 目前只是本地占位开关，没有真实价格、没有真实支付。后端仍是 3 个 Cloudflare 免费节点，接上真实 VPS 节点之前，不要用 Pro 向他人收费，也不要宣传多地区、全球节点。</div>
         <div class="hint">Windows 版没有 AdMob，赚钱以后走 Pro / 网站结账，不在 App 内放广告。商品 ID（待定）：maihe_vpn_pro_windows —— 在确定收款方案后才填写。</div>
         <button id="btnEnableProPlaceholder" class="btn btn-secondary full">开启本地 Pro 占位（仅测试，不收费）</button>
         <button id="btnDisablePro" class="btn btn-secondary full">关闭 Pro 占位</button>
@@ -131,8 +131,8 @@
       <div class="card">
         <div class="card-title">关于与隐私</div>
         <ol class="about-list">
-          <li>本程序不内置任何 UUID 或订阅地址。第一次打开是空列表，你需要自己粘贴 VLESS 链接、导入订阅，或手动填 UUID。</li>
-          <li>真实后端只有 1 个 Cloudflare 免费节点（cs334-site.pages.dev），每天 10 万次请求，约 5–10 GB。不是多地区服务器群，没有 30+ 服务器。</li>
+          <li>本程序内置 3 个麦禾节点（你自己的 Cloudflare 免费节点），第一次打开就有节点可用；也可以自己粘贴 VLESS 链接、导入订阅，或手动填 UUID。</li>
+          <li>真实后端只有 3 个 Cloudflare 免费节点（cs334-site / cs334-node2 / cs334-node3），每天 10 万次请求按账号共用，约 5–10 GB。不是多地区服务器群，没有 30+ 服务器。</li>
           <li>连接状态只认 sing-box 子进程的真实状态。sing-box 缺失或启动失败时，会明确报错，绝不显示“已连接”。</li>
           <li>出口 IP 检测是真验证：连接前后各查一次，IP 变了才说明流量走了节点。</li>
           <li>免费额度（每日 500 MB、每月 10 GB）是本机本地记账，没有账号、没有服务端，换电脑 / 清数据后会重置。</li>
