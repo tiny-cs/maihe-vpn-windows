@@ -242,6 +242,7 @@ function updateTrayMenu() {
       if (node) startVpn(node);
       else if (mainWindow) { mainWindow.show(); mainWindow.focus(); }
     } },
+    { label: '检查更新', click: () => checkForUpdatesNow() },
     { type: 'separator' },
     { label: '退出', click: () => { quitting = true; app.quit(); } },
   ]));
@@ -261,6 +262,38 @@ function createTray() {
     console.error('创建托盘失败', e);
     tray = null;
   }
+}
+
+// ---- 自动更新（electron-updater + GitHub Release） ----
+// 只在打包后的正式版里启用，开发运行时跳过。启动 5 秒后检查一次，
+// 有新版就自动下载，下载完弹窗问要不要现在重启安装；选“稍后”就
+// 下次退出程序时再装。没有代码签名，更新安装时 Windows 仍会弹
+// “未知发布者”，点“仍要运行”即可。
+let autoUpdater = null;
+function setupAutoUpdate() {
+  if (!app.isPackaged) return;
+  try {
+    ({ autoUpdater } = require('electron-updater'));
+  } catch (e) { console.error('加载自动更新模块失败', e); return; }
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.on('update-downloaded', () => {
+    dialog.showMessageBox(mainWindow, {
+      type: 'info', title: APP_NAME,
+      message: '麦禾 VPN 新版已下载好',
+      detail: '现在重启安装，还是下次退出程序时再装？',
+      buttons: ['现在重启安装', '稍后'], defaultId: 0, cancelId: 1,
+    }).then(({ response }) => { if (response === 0) { quitting = true; autoUpdater.quitAndInstall(); } });
+  });
+  autoUpdater.on('error', (e) => { console.error('自动更新出错', e); });
+  setTimeout(() => { autoUpdater.checkForUpdatesAndNotify().catch(() => {}); }, 5000);
+}
+function checkForUpdatesNow() {
+  if (!app.isPackaged) {
+    dialog.showMessageBox(mainWindow, { type: 'info', title: APP_NAME, message: '开发版不检查更新。', buttons: ['确定'] });
+    return;
+  }
+  if (autoUpdater) autoUpdater.checkForUpdatesAndNotify().catch(() => {});
 }
 
 function sendState() {
@@ -445,6 +478,7 @@ function createWindow() {
 
 app.whenReady().then(() => {
   createWindow();
+  setupAutoUpdate();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
