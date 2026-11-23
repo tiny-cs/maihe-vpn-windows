@@ -229,6 +229,8 @@ function renderUpdate() {
     default: line.textContent = ver ? '当前版本 ' + ver + ' · 点击“检查更新”手动检查' : '点击“检查更新”手动检查';
   }
   if (restartBtn) restartBtn.hidden = u.state !== 'downloaded';
+  const av = $('aboutVersionLine');
+  if (av && ver) av.textContent = '版本 ' + ver + ' · Electron + sing-box · Windows 11';
 }
 function renderQuota() {
   if (!quota) quota = normalizeQuota(null);
