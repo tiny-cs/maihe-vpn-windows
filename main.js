@@ -342,6 +342,14 @@ function createTray() {
 // 有新版就自动下载，下载完弹窗问要不要现在重启安装；选“稍后”就
 // 下次退出程序时再装。没有代码签名，更新安装时 Windows 仍会弹
 // “未知发布者”，点“仍要运行”即可。
+// ---- 首页更新状态：主进程记录，界面显示 ----
+// idle 未检查 | checking 检查中 | up-to-date 已是最新 | available 发现新版
+// downloading 下载中（带进度）| downloaded 已下载好 | error 检查失败 | dev 开发版
+let updateStatus = { state: 'idle', version: null, progress: 0, error: '' };
+function setUpdateStatus(patch) {
+  updateStatus = Object.assign({}, updateStatus, patch);
+  sendState();
+}
 let autoUpdater = null;
 function setupAutoUpdate() {
   if (!app.isPackaged) return;
@@ -350,7 +358,12 @@ function setupAutoUpdate() {
   } catch (e) { console.error('加载自动更新模块失败', e); return; }
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
-  autoUpdater.on('update-downloaded', () => {
+  autoUpdater.on('checking-for-update', () => setUpdateStatus({ state: 'checking', error: '' }));
+  autoUpdater.on('update-available', (info) => setUpdateStatus({ state: 'available', version: (info && info.version) || null }));
+  autoUpdater.on('update-not-available', () => setUpdateStatus({ state: 'up-to-date', error: '' }));
+  autoUpdater.on('download-progress', (p) => setUpdateStatus({ state: 'downloading', progress: Math.round((p && p.percent) || 0) }));
+  autoUpdater.on('update-downloaded', (info) => {
+    setUpdateStatus({ state: 'downloaded', version: (info && info.version) || null });
     dialog.showMessageBox(mainWindow, {
       type: 'info', title: APP_NAME,
       message: '麦禾 VPN 新版已下载好',
@@ -358,15 +371,17 @@ function setupAutoUpdate() {
       buttons: ['现在重启安装', '稍后'], defaultId: 0, cancelId: 1,
     }).then(({ response }) => { if (response === 0) { quitting = true; autoUpdater.quitAndInstall(); } });
   });
-  autoUpdater.on('error', (e) => { console.error('自动更新出错', e); });
+  autoUpdater.on('error', (e) => { console.error('自动更新出错', e); setUpdateStatus({ state: 'error', error: (e && e.message) || String(e) }); });
   setTimeout(() => { autoUpdater.checkForUpdatesAndNotify().catch(() => {}); }, 5000);
 }
 function checkForUpdatesNow() {
   if (!app.isPackaged) {
+    setUpdateStatus({ state: 'dev' });
     dialog.showMessageBox(mainWindow, { type: 'info', title: APP_NAME, message: '开发版不检查更新。', buttons: ['确定'] });
     return;
   }
-  if (autoUpdater) autoUpdater.checkForUpdatesAndNotify().catch(() => {});
+  setUpdateStatus({ state: 'checking', error: '' });
+  if (autoUpdater) autoUpdater.checkForUpdatesAndNotify().catch((e) => { setUpdateStatus({ state: 'error', error: (e && e.message) || String(e) }); });
 }
 
 function sendState() {
@@ -381,6 +396,8 @@ function sendState() {
       connectedMs: connectStartedAt ? Date.now() - connectStartedAt : 0,
       singboxPath: findSingBox(),
       systemProxy: systemProxyState,
+      update: updateStatus,
+      version: app.getVersion(),
     });
   }
 }
@@ -582,7 +599,17 @@ ipcMain.handle('vpn-status', () => ({
   connectedMs: connectStartedAt ? Date.now() - connectStartedAt : 0,
   singboxPath: findSingBox(),
   systemProxy: systemProxyState,
+  update: updateStatus,
+  version: app.getVersion(),
 }));
+ipcMain.handle('update-check', () => { checkForUpdatesNow(); return { ok: true, update: updateStatus }; });
+ipcMain.handle('update-restart', () => {
+  if (autoUpdater && updateStatus.state === 'downloaded') {
+    quitting = true; autoUpdater.quitAndInstall();
+    return { ok: true };
+  }
+  return { ok: false, error: '没有已下载好的新版。' };
+});
 ipcMain.handle('vpn-connect', (_e, node) => startVpn(node));
 ipcMain.handle('report-error', (_e, data) => {
   // 渲染层报错经 preload 转发到主进程再上报 Sentry（渲染层不能直接 require）。

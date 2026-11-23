@@ -33,6 +33,8 @@ window.addEventListener('unhandledrejection', (e) => {
 let nodes = [];
 let currentNodeId = null;
 let vpnState = { state: 'disconnected', node: null, error: '', sessionBytes: { up: 0, down: 0 }, speed: { upBps: 0, downBps: 0 }, connectedMs: 0 };
+let lastUpdate = null;   // 上一次收到的更新状态（连接切换时会重建 vpnState，用它兜底）
+let lastVersion = '';
 let quota = null;
 let ipBefore = '';
 let timer = null;
@@ -200,6 +202,33 @@ function renderStatus() {
     ? '↓ ' + fmtSpeed(sp.downBps) + ' / ↑ ' + fmtSpeed(sp.upBps) + '（sing-box Clash API 实时统计；若显示 0，见 README 故障排查）'
     : '↓ -- / ↑ --';
   $('sessionLine').textContent = '本次流量：↓ ' + fmtBytes(sb.down) + ' · ↑ ' + fmtBytes(sb.up) + ' · 已连接 ' + fmtDuration(vpnState.connectedMs || 0);
+  renderUpdate();
+}
+// ---------- 首页更新状态 ----------
+function renderUpdate() {
+  const line = $('updateLine');
+  const restartBtn = $('btnRestartUpdate');
+  if (!line) return;
+  if (vpnState.update) lastUpdate = vpnState.update;
+  if (vpnState.version) lastVersion = vpnState.version;
+  const u = lastUpdate;
+  const ver = lastVersion;
+  if (!u) {
+    line.textContent = ver ? '当前版本 ' + ver + ' · 点击“检查更新”手动检查' : '点击“检查更新”手动检查';
+    if (restartBtn) restartBtn.hidden = true;
+    return;
+  }
+  switch (u.state) {
+    case 'checking': line.textContent = '正在检查更新…'; break;
+    case 'up-to-date': line.textContent = '已是最新版' + (ver ? '（' + ver + '）' : '') + '。'; break;
+    case 'available': line.textContent = '发现新版' + (u.version ? ' ' + u.version : '') + '，正在下载…'; break;
+    case 'downloading': line.textContent = '正在下载新版…' + (u.progress ? ' ' + u.progress + '%' : ''); break;
+    case 'downloaded': line.textContent = '新版' + (u.version ? ' ' + u.version : '') + '已下载好，点下面按钮重启安装。'; break;
+    case 'error': line.textContent = '检查更新失败' + (u.error ? '：' + u.error : '') + '，点“检查更新”重试。'; break;
+    case 'dev': line.textContent = '开发版不检查更新。'; break;
+    default: line.textContent = ver ? '当前版本 ' + ver + ' · 点击“检查更新”手动检查' : '点击“检查更新”手动检查';
+  }
+  if (restartBtn) restartBtn.hidden = u.state !== 'downloaded';
 }
 function renderQuota() {
   if (!quota) quota = normalizeQuota(null);
@@ -321,6 +350,16 @@ function bindEvents() {
     if (target) { currentNodeId = target.id; testLatency(target.id); }
   });
   $('btnCheckIp').addEventListener('click', checkIp);
+  $('btnCheckUpdate').addEventListener('click', async () => {
+    try {
+      const r = await window.maihe.updateCheck();
+      if (r && r.update) lastUpdate = r.update;
+    } catch (_) { /* 忽略，主进程会通过状态推送更新 */ }
+    renderUpdate();
+  });
+  $('btnRestartUpdate').addEventListener('click', async () => {
+    try { await window.maihe.updateRestart(); } catch (_) { /* 忽略 */ }
+  });
   $('btnProxySettings').addEventListener('click', () => window.maihe.openExternal('ms-settings:network-proxy'));
   $('btnPro').addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
