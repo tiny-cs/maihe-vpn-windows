@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('maihe', {
   vpnDisconnect: () => ipcRenderer.invoke('vpn-disconnect'),
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
   showMessage: (opts) => ipcRenderer.invoke('show-message', opts),
+  reportError: (message, stack) => ipcRenderer.invoke('report-error', { message, stack }),
   onVpnState: (cb) => {
     const listener = (_e, state) => cb(state);
     ipcRenderer.on('vpn-state', listener);

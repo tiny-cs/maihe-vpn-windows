@@ -10,6 +10,79 @@ const fs = require('fs');
 const { spawn, execFile } = require('child_process');
 const { buildSingBoxConfig } = require('./src/singboxConfig');
 
+// ---- Sentry 报错监测（远程可见，对标安卓的 Crashlytics） ----
+// 免费 Developer 套餐，每月 5000 条。DSN 是客户端标识（设计上就是公开的），
+// 不是密钥，可以进公开仓库。上报前脱敏：节点 UUID、节点链接
+// （vless/vmess/trojan/ss）、用户数据目录里的 Windows 用户名一律替换；
+// sing-box 配置文件内容本身永远不上报，只报报错信息和最后几行 stderr。
+const SENTRY_DSN = 'https://c1114fd01d5d0760f1c2be391095bff2@o4512480213204993.ingest.us.sentry.io/4512480216350720';
+function scrubText(s) {
+  if (typeof s !== 'string') return s;
+  return s
+    .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '[UUID]')
+    .replace(/(vless|vmess|trojan|ss):\/\/\S+/gi, '[NODE-LINK]')
+    .replace(/C:\\Users\\[^\\\/]+/gi, 'C:\\Users\\[user]');
+}
+function scrubValue(v) {
+  if (typeof v === 'string') return scrubText(v);
+  if (Array.isArray(v)) return v.map(scrubValue);
+  if (v && typeof v === 'object') {
+    const o = {};
+    for (const k of Object.keys(v)) o[k] = scrubValue(v[k]);
+    return o;
+  }
+  return v;
+}
+let Sentry = null;
+try {
+  // 注意：v5 起主进程必须引 '@sentry/electron/main'，
+  // 直接引 '@sentry/electron' 会抛错（已实测确认）。
+  Sentry = require('@sentry/electron/main');
+  Sentry.init({
+    dsn: SENTRY_DSN,
+    release: 'maihe-vpn-windows@' + app.getVersion(),
+    environment: 'production',
+    tracesSampleRate: 0, // 只报错误，不做性能追踪
+    sendDefaultPii: false,
+    beforeSend(event) {
+      try {
+        if (event.message) event.message = scrubText(event.message);
+        if (event.exception && event.exception.values) {
+          for (const ex of event.exception.values) {
+            if (ex.value) ex.value = scrubText(ex.value);
+            if (ex.stacktrace && ex.stacktrace.frames) {
+              for (const f of ex.stacktrace.frames) {
+                if (f.filename) f.filename = scrubText(f.filename);
+                if (f.module) f.module = scrubText(f.module);
+              }
+            }
+          }
+        }
+        if (event.breadcrumbs) {
+          for (const b of event.breadcrumbs) {
+            if (b.message) b.message = scrubText(b.message);
+            if (b.data) b.data = scrubValue(b.data);
+          }
+        }
+        if (event.extra) event.extra = scrubValue(event.extra);
+        if (event.contexts) event.contexts = scrubValue(event.contexts);
+      } catch (_) { /* 脱敏失败也不阻塞上报 */ }
+      return event;
+    },
+  });
+} catch (e) {
+  console.error('Sentry 初始化失败（不影响 VPN）', e);
+  Sentry = null;
+}
+function reportError(err, extra) {
+  if (!Sentry) return;
+  try {
+    Sentry.captureException(err instanceof Error ? err : new Error(String(err)), {
+      extra: extra ? scrubValue(extra) : undefined,
+    });
+  } catch (_) { /* 上报失败也不影响 VPN */ }
+}
+
 // ---- 自动设置 Windows 系统代理 ----
 // 点盾连接成功后，自动把系统代理设为 127.0.0.1:2080（sing-box 的 mixed 入站），
 // 断开 / sing-box 崩溃 / 程序退出时自动恢复成连接前的设置。
@@ -358,6 +431,9 @@ async function startVpn(node) {
   currentState = 'connecting';
   currentNode = node;
   lastConnectedNode = node;
+  if (Sentry) {
+    try { Sentry.addBreadcrumb({ category: 'vpn', message: 'connect ' + node.type + ' ' + node.server, level: 'info' }); } catch (_) {}
+  }
   lastError = '';
   sessionBytes = { up: 0, down: 0 };
   connectStartedAt = Date.now();
@@ -398,6 +474,7 @@ async function startVpn(node) {
   } catch (e) {
     currentState = 'failed';
     lastError = 'sing-box 配置校验失败：' + (e && e.message ? e.message : String(e));
+    reportError(e, { stage: 'sing-box check' });
     currentNode = null;
     sendState();
     return { ok: false, error: lastError };
@@ -412,6 +489,7 @@ async function startVpn(node) {
   singboxProc.on('error', (err) => {
     currentState = 'failed';
     lastError = '启动 sing-box 失败：' + err.message;
+    reportError(err, { stage: 'sing-box spawn' });
     singboxProc = null;
     currentNode = null;
     sendState();
@@ -422,6 +500,7 @@ async function startVpn(node) {
       currentState = 'failed';
       lastError = 'sing-box 进程已退出' + (code !== null ? '（退出码 ' + code + '）' : '') +
         (stderrBuf ? '：' + stderrBuf.slice(-500) : '。请查看配置或重新下载 sing-box。');
+      reportError(new Error(lastError), { stage: 'sing-box exit', code, stderrTail: stderrBuf.slice(-500) });
       singboxProc = null;
       currentNode = null;
       // sing-box 崩溃也要把系统代理恢复，否则用户上不了网。
@@ -505,6 +584,13 @@ ipcMain.handle('vpn-status', () => ({
   systemProxy: systemProxyState,
 }));
 ipcMain.handle('vpn-connect', (_e, node) => startVpn(node));
+ipcMain.handle('report-error', (_e, data) => {
+  // 渲染层报错经 preload 转发到主进程再上报 Sentry（渲染层不能直接 require）。
+  const err = new Error((data && data.message) || 'renderer error');
+  if (data && data.stack) err.stack = data.stack;
+  reportError(err, { source: 'renderer' });
+  return { ok: true };
+});
 ipcMain.handle('vpn-disconnect', () => {
   const bytes = { ...sessionBytes };
   stopSingBox();

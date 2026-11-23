@@ -14,6 +14,22 @@ const MONTHLY_FREE = 10 * 1024 * MB;
 
 const $ = (id) => document.getElementById(id);
 
+// ---------- 渲染层报错上报 Sentry ----------
+// 渲染层不能直接 require Sentry，经 preload 转发到主进程上报；
+// 上报前主进程会脱敏（UUID、节点链接、Windows 用户名都不发）。
+function forwardRendererError(message, stack) {
+  try {
+    if (window.maihe && window.maihe.reportError) window.maihe.reportError(message, stack || '');
+  } catch (_) { /* 上报失败不影响界面 */ }
+}
+window.addEventListener('error', (e) => {
+  forwardRendererError(e.message || 'window error', (e.error && e.error.stack) || '');
+});
+window.addEventListener('unhandledrejection', (e) => {
+  const r = e.reason;
+  forwardRendererError('unhandled rejection: ' + (r && r.message ? r.message : String(r)), (r && r.stack) || '');
+});
+
 let nodes = [];
 let currentNodeId = null;
 let vpnState = { state: 'disconnected', node: null, error: '', sessionBytes: { up: 0, down: 0 }, speed: { upBps: 0, downBps: 0 }, connectedMs: 0 };
