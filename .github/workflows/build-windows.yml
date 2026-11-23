@@ -43,6 +43,14 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Set version from build number
+        shell: pwsh
+        run: |
+          $pkg = Get-Content package.json -Raw | ConvertFrom-Json
+          $pkg.version = "0.1.${{ github.run_number }}"
+          $pkg | ConvertTo-Json -Depth 10 | Set-Content package.json -Encoding UTF8
+
+
       - name: Build installer
         run: npm run dist
 
@@ -56,8 +64,8 @@ jobs:
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v0.1.0-build-${{ github.run_number }}
-          name: 麦禾 VPN Windows v0.1.0 (build ${{ github.run_number }})
+          tag_name: v0.1.${{ github.run_number }}
+          name: 麦禾 VPN Windows v0.1.${{ github.run_number }}
           files: |
             dist/*.exe
             dist/latest.yml
