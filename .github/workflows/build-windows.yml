@@ -58,5 +58,7 @@ jobs:
         with:
           tag_name: v0.1.0-build-${{ github.run_number }}
           name: 麦禾 VPN Windows v0.1.0 (build ${{ github.run_number }})
-          files: dist/*.exe
+          files: |
+            dist/*.exe
+            dist/latest.yml
           fail_on_unmatched_files: true
